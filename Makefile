@@ -1,5 +1,5 @@
 CXX=g++
-CXXARGS=-Wall -O3 -g
+CXXARGS=-Wall -O3 -g -std=c++0x
 all: 01_jf2seeds 05_extendExactMatches
 
 01_jf2seeds: 01_jf2seeds.o
