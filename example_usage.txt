@@ -1,0 +1,45 @@
+
+#####################################
+##    NEAT-REPEAT USAGE EXAMPLE    ##	hg38,  k = 40,  p = 100
+#####################################
+
+jellyfish count -m 40 -s 2G -t 4 -L 2 -C -o hg38_counts_m40.jf hg38_clean.fa
+
+jellyfish dump -o hg38_counts_m40.fa hg38_counts_m40.jf
+
+####
+
+01_jf2seeds -i hg38_clean.fa -j hg38_counts_m40.fa -o /output/path/hg38
+
+(this creates hg38_k40_p100.txt in the output directory)
+
+python 02_pruneSeeds.py hg38_clean.fa hg38_k40_p100.txt
+
+(this creates hg38_k40_p100_pruned.txt in the same directory as hg38_k40_p100.txt)
+(additionally this creates hg38_k40_p100_lowComplexity.txt separately, but this will be changed)
+
+####
+
+[8gb] python 03_exactMatches.py -r hg38_clean.fa -R hg38 -k 40 -p 100 -i hg38_k40_p100_pruned.txt -o /output/path/02_exactMatches/ --job 1 1024
+
+(repeat for all jobs 1 ... 1024)
+(this creates exact seed indices in output directory)
+
+[64gb+] python 04_mergeExactMatches.py /input/path/02_exactMatches/
+
+(this creates a merged file in the input directory)
+
+####
+
+05_extendExactMatches -r hg38_clean.fa -R hg38 -k 50 -p 100 -i hg38_k40_p100_exactMatches.txt -o /output/path/extendedMatches_e2/ -j 1 -J 200 -e 2
+
+(repeat for all jobs...)
+
+####
+ALTERNATIVELY: SEED EXTENSION IN FIXED-ERROR MODE:    error rate: 1%  (-F 1)
+####
+
+05_extendExactMatches -r hg38_clean.fa -R hg38 -k 50 -p 100 -i hg38_k40_p100_exactMatches.txt -o /output/path/extendedMatches_e2/ -j 1 -J 200 -F 1
+
+(this is really computationally expensive!)
+
