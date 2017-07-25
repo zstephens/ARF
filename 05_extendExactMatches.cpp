@@ -14,8 +14,6 @@ using namespace std;
 
 // if we encounter more than this many non-ACGT characters in a row, stop extending
 const unsigned int INVALID_SPAN = 5;
-// in fixed-error mode, redo seed extension if change in edit distance surpasses this
-const unsigned int MIN_EDT_REDO = 2;
 // for sanity purposes, lets not consider any edit distance threshold above this
 const unsigned int MAX_EDT = 50000;
 
@@ -230,7 +228,7 @@ int main(int argc, char *argv[])
 	bool rc1, rc2;
 	
 	vector<unsigned int> dp_vals(2*editDist+1), dp_vals_next(2*editDist+1), match_mask(2*editDist+1);
-	unsigned int currentDist, cEDT, cEDT_prev;	// cEDT = current edit distance threshold
+	unsigned int currentDist, cEDT, cEDT_current, tvm;	// cEDT = current edit distance threshold
 	unsigned int myR1_invalid, myR2_invalid;
 
 	unsigned int slidingWin = min(editDist,INVALID_SPAN);
@@ -305,15 +303,23 @@ int main(int argc, char *argv[])
 		// determine initial edit distance if in fixed error mode
 		if (fixed_error_mode == true)
 		{
-			cEDT = ((e1-s1)*fixedErr)/100;
-			//cout << "=== " << e1-s1 << " " << cEDT << endl;
+			cEDT = ((e1-s1)*fixedErr)/100; // (s1,e1) & (s2,e2) are same size, so we can use either one
+			slidingWin = min(cEDT,INVALID_SPAN);
+			dp_vals.resize(2*cEDT+1);
+			dp_vals_next.resize(2*cEDT+1);
+			match_mask.resize(2*cEDT+1);
 		}
 		else
 		{
 			cEDT = editDist;
 		}
 		cEDT = min(cEDT,MAX_EDT);
-		cEDT_prev = 0;
+		//cout << "=== " << e1-s1 << " " << cEDT << endl;
+		//cout << s1 << " " << e1 << " " << s2 << " " << e2 << endl;
+
+		// bounds check to ensure we are at least cEDT away from ref boundaries
+		cEDT = min_3(cEDT,s1,s2);
+		cEDT = min_3(cEDT,paddedRefLen-e1,paddedRefLen-e2);
 
 		// for easy cases lets spit out the answer with no computation necessary
 		if (cEDT == 0)
@@ -326,246 +332,244 @@ int main(int argc, char *argv[])
 		else
 		{
 
-			while (cEDT_prev == 0 || cEDT - cEDT_prev >= MIN_EDT_REDO)
+			/////////////////////////////////////////////////////////
+			//
+			//                  EXTEND TO THE RIGHT
+			//
+			/////////////////////////////////////////////////////////
+
+			// check for invalid patch of characters
+			endVal = -1;
+			for (unsigned int i=0; i<=cEDT-slidingWin; i++)
 			{
-
-				slidingWin = min(cEDT,INVALID_SPAN);
-				dp_vals.resize(2*cEDT+1);
-				dp_vals_next.resize(2*cEDT+1);
-				match_mask.resize(2*cEDT+1);
-
-				/////////////////////////////////////////////////////////
-				//
-				//                  EXTEND TO THE RIGHT
-				//
-				/////////////////////////////////////////////////////////
-
-				// check for invalid patch of characters
-				endVal = -1;
-				for (unsigned int i=0; i<=cEDT-slidingWin; i++)
+				if (e1+i+slidingWin >= paddedRefLen || e2+i+slidingWin >= paddedRefLen)
 				{
-					if (e1+i+slidingWin >= paddedRefLen || e2+i+slidingWin >= paddedRefLen)
-					{
-						endVal = paddedRefLen - max(e1,e2); // check for going past end of sequence
-						break;
-					}
-					if (isInvalidString(r1->substr(e1+i,slidingWin)) || isInvalidString(r2->substr(e2+i,slidingWin)))
-					{
-						endVal = i;
-						break;
-					}
-				}
-				if (endVal >= 0)
-				{
-					e1_out = e1 + endVal;
-					e2_out = e2 + endVal;
-				}
-				else
-				{
-					// get dynamic programming matrix values to initialize seed extension algorithm
-					dp_vals = edit_distance(r1->substr(e1,cEDT),r2->substr(e2,cEDT));
-					e1_out  = e1+cEDT;
-					e2_out  = e2+cEDT;
-					myR1_invalid = 0;
-					myR2_invalid = 0;
-					// normal edit distance
-					//currentDist = dp_vals[cEDT];
-
-					// lowest score is the minimum of last row/col of DP matrix because
-					// we are fine with ignoring trailing deletions in the alignment
-					currentDist = *min_element(dp_vals.begin(),dp_vals.end());
-
-					//
-					// repeatedly extend the optimal alignment until we reach the specified edit distance
-					//
-					while (true)
-					{
-						// bounds check
-						if (e1_out >= paddedRefLen-1 || e2_out >= paddedRefLen-1)
-							break;
-						// check again for string of invalid values...
-						if ((*r1)[e1_out] != 'A' && (*r1)[e1_out] != 'C' && (*r1)[e1_out] != 'G' && (*r1)[e1_out] != 'T')
-							myR1_invalid++;
-						else
-							myR1_invalid = 0;
-						if ((*r2)[e2_out] != 'A' && (*r2)[e2_out] != 'C' && (*r2)[e2_out] != 'G' && (*r2)[e2_out] != 'T')
-							myR2_invalid++;
-						else
-							myR2_invalid = 0;
-						if (myR1_invalid >= INVALID_SPAN || myR2_invalid >= INVALID_SPAN)
-						{
-							e1_out -= INVALID_SPAN;
-							e2_out -= INVALID_SPAN;
-							break;
-						}
-
-						// construct vector of relevant bp match diagonals	
-						for (unsigned int i=0; i<cEDT; i++)
-						{
-							match_mask[i] = ((*r1)[e1_out] == (*r2)[e2_out-cEDT+i] ? 0 : 1);
-						}
-						for (int i=cEDT; i>=0; i--)
-						{
-							match_mask[cEDT+i] = ((*r1)[e1_out-i] == (*r2)[e2_out] ? 0 : 1);
-						}
-
-						// construct the new row/col of DP matrix
-						dp_vals_next[0] = min(dp_vals[0]+match_mask[0], dp_vals[1]+1);
-						dp_vals_next[2*cEDT] = min(dp_vals[2*cEDT]+match_mask[2*cEDT], dp_vals[2*cEDT-1]+1);
-						for (unsigned int i=1; i<cEDT; i++)
-						{
-							dp_vals_next[i] = min_3(dp_vals_next[i-1]+1, dp_vals[i]+match_mask[i], dp_vals[i+1]+1);
-						}
-						for (unsigned int i=2*cEDT-1; i>=cEDT+1; i--)
-						{
-							dp_vals_next[i] = min_3(dp_vals[i-1]+1, dp_vals[i]+match_mask[i], dp_vals_next[i+1]+1);
-						}
-						dp_vals_next[cEDT] = min_3(dp_vals[cEDT]+match_mask[cEDT], dp_vals_next[cEDT-1]+1, dp_vals_next[cEDT+1]+1);
-
-						dp_vals = dp_vals_next;
-						//currentDist = dp_vals[cEDT];
-						currentDist = *min_element(dp_vals.begin(),dp_vals.end());
-						if (currentDist < cEDT)
-						{
-							e1_out++;
-							e2_out++;
-						}
-						else
-						{
-							e1_out -= max(myR1_invalid,myR2_invalid);
-							e2_out -= max(myR1_invalid,myR2_invalid);
-							break;
-						}
-					}
-				}
-
-				/////////////////////////////////////////////////////////
-				//
-				//                  EXTEND TO THE LEFT
-				//
-				// severe amounts of code duplication, for performance.
-				//
-				/////////////////////////////////////////////////////////
-
-				// check for invalid patch of characters
-				endVal = -1;
-				for (unsigned int i=0; i<=cEDT-slidingWin; i++)
-				{
-					if (s1-i-1 <= 0 || s2-i-1 <= 0)
-					{
-						endVal = -2;
-						break;
-					}
-					if (isInvalidString(r1->substr(s1-i-1,slidingWin)) || isInvalidString(r2->substr(s2-i-1,slidingWin)))
-					{
-						endVal = i;
-						break;
-					}
-				}
-				if (endVal >= 0)
-				{
-					s1_out = s1 - endVal - 1 + slidingWin;
-					s2_out = s2 - endVal - 1 + slidingWin;
-				}
-				else if (endVal == -2)	// bounds check
-				{
-					s1_out = s1 - min(s1,s2) + 1;
-					s2_out = s2 - min(s1,s2) + 1;
-				}
-				else
-				{
-					// get dynamic programming matrix values to initialize seed extension algorithm
-					s_temp1 = r1->substr(s1-cEDT,cEDT);
-					s_temp2 = r2->substr(s2-cEDT,cEDT);
-					reverse(s_temp1.begin(), s_temp1.end());
-					reverse(s_temp2.begin(), s_temp2.end());
-					dp_vals = edit_distance(s_temp1,s_temp2);
-					s1_out  = s1-cEDT;
-					s2_out  = s2-cEDT;
-					myR1_invalid = 0;
-					myR2_invalid = 0;
-					currentDist = *min_element(dp_vals.begin(),dp_vals.end());
-
-					//
-					// repeatedly extend the optimal alignment until we reach the specified edit distance
-					//
-					while (true)
-					{
-						// bounds check
-						if (s1_out <= 0 || s2_out <= 0)
-							break;
-						// check again for string of invalid values...
-						if ((*r1)[s1_out-1] != 'A' && (*r1)[s1_out-1] != 'C' && (*r1)[s1_out-1] != 'G' && (*r1)[s1_out-1] != 'T')
-							myR1_invalid++;
-						else
-							myR1_invalid = 0;
-						if ((*r2)[s2_out-1] != 'A' && (*r2)[s2_out-1] != 'C' && (*r2)[s2_out-1] != 'G' && (*r2)[s2_out-1] != 'T')
-							myR2_invalid++;
-						else
-							myR2_invalid = 0;
-						if (myR1_invalid >= INVALID_SPAN || myR2_invalid >= INVALID_SPAN)
-						{
-							s1_out += INVALID_SPAN-1;
-							s2_out += INVALID_SPAN-1;
-							break;
-						}
-
-						// construct vector of relevant bp match diagonals	
-						for (unsigned int i=0; i<cEDT; i++)
-						{
-							//cout << i << ": r1[" << s1_out-1 << "], r2[" << s2_out+cEDT-1-i << "]   " << (*r1)[s1_out-1] << " " << (*r2)[s2_out+cEDT-1-i] << endl;
-							match_mask[i] = ((*r1)[s1_out-1] == (*r2)[s2_out+cEDT-1-i] ? 0 : 1);
-						}
-						for (int i=cEDT; i>=0; i--)
-						{
-							//cout << cEDT+i << ": r1[" << s1_out-1+i << "], r2[" << s2_out-1 << "]   " << (*r1)[s1_out-1+i] << " " << (*r2)[s2_out-1] << endl;
-							match_mask[cEDT+i] = ((*r1)[s1_out-1+i] == (*r2)[s2_out-1] ? 0 : 1);
-						}
-
-						// construct the new row/col of DP matrix
-						dp_vals_next[0] = min(dp_vals[0]+match_mask[0], dp_vals[1]+1);
-						dp_vals_next[2*cEDT] = min(dp_vals[2*cEDT]+match_mask[2*cEDT], dp_vals[2*cEDT-1]+1);
-						for (unsigned int i=1; i<cEDT; i++)
-						{
-							dp_vals_next[i] = min_3(dp_vals_next[i-1]+1, dp_vals[i]+match_mask[i], dp_vals[i+1]+1);
-						}
-						for (unsigned int i=2*cEDT-1; i>=cEDT+1; i--)
-						{
-							dp_vals_next[i] = min_3(dp_vals[i-1]+1, dp_vals[i]+match_mask[i], dp_vals_next[i+1]+1);
-						}
-						dp_vals_next[cEDT] = min_3(dp_vals[cEDT]+match_mask[cEDT], dp_vals_next[cEDT-1]+1, dp_vals_next[cEDT+1]+1);
-
-						dp_vals = dp_vals_next;
-						currentDist = *min_element(dp_vals.begin(),dp_vals.end());
-						if (currentDist < cEDT)
-						{
-							s1_out--;
-							s2_out--;
-						}
-						else
-						{
-							s1_out += max(myR1_invalid,myR2_invalid);
-							s2_out += max(myR1_invalid,myR2_invalid);
-							break;
-						}
-					}
-				}
-
-				if (fixed_error_mode == true)
-				{
-					cEDT_prev = cEDT;
-					cEDT = ((e1_out-s1_out)*fixedErr)/100;
-					cEDT = min(cEDT,MAX_EDT);
-					//cout << cEDT_prev << " --> " << cEDT << endl;
-					//cout << e1_out-s1_out << endl;
-				}
-				else
-				{
+					endVal = paddedRefLen - max(e1,e2); // check for going past end of sequence
 					break;
 				}
+				if (isInvalidString(r1->substr(e1+i,slidingWin)) || isInvalidString(r2->substr(e2+i,slidingWin)))
+				{
+					endVal = i;
+					break;
+				}
+			}
+			if (endVal >= 0)
+			{
+				e1_out = e1 + endVal;
+				e2_out = e2 + endVal;
+			}
+			else
+			{
+				// get dynamic programming matrix values to initialize seed extension algorithm
+				dp_vals = edit_distance(r1->substr(e1,cEDT),r2->substr(e2,cEDT));
+				e1_out  = e1+cEDT;
+				e2_out  = e2+cEDT;
+				myR1_invalid = 0;
+				myR2_invalid = 0;
+				// normal edit distance
+				//currentDist = dp_vals[cEDT];
 
+				// lowest score is the minimum of last row/col of DP matrix because
+				// we are fine with ignoring trailing deletions in the alignment
+				currentDist = *min_element(dp_vals.begin(),dp_vals.end());
+
+				cEDT_current = cEDT;
+
+				//
+				// repeatedly extend the optimal alignment until we reach the specified edit distance
+				//
+				while (true)
+				{
+					// bounds check
+					if (e1_out >= paddedRefLen-1 || e2_out >= paddedRefLen-1)
+						break;
+					// check again for string of invalid values...
+					if ((*r1)[e1_out] != 'A' && (*r1)[e1_out] != 'C' && (*r1)[e1_out] != 'G' && (*r1)[e1_out] != 'T')
+						myR1_invalid++;
+					else
+						myR1_invalid = 0;
+					if ((*r2)[e2_out] != 'A' && (*r2)[e2_out] != 'C' && (*r2)[e2_out] != 'G' && (*r2)[e2_out] != 'T')
+						myR2_invalid++;
+					else
+						myR2_invalid = 0;
+					if (myR1_invalid >= INVALID_SPAN || myR2_invalid >= INVALID_SPAN)
+					{
+						e1_out -= INVALID_SPAN;
+						e2_out -= INVALID_SPAN;
+						break;
+					}
+
+					// construct vector of relevant bp match diagonals	
+					for (unsigned int i=0; i<cEDT; i++)
+					{
+						match_mask[i] = ((*r1)[e1_out] == (*r2)[e2_out-cEDT+i] ? 0 : 1);
+					}
+					for (int i=cEDT; i>=0; i--)
+					{
+						match_mask[cEDT+i] = ((*r1)[e1_out-i] == (*r2)[e2_out] ? 0 : 1);
+					}
+
+					// construct the new row/col of DP matrix
+					dp_vals_next[0] = min(dp_vals[0]+match_mask[0], dp_vals[1]+1);
+					dp_vals_next[2*cEDT] = min(dp_vals[2*cEDT]+match_mask[2*cEDT], dp_vals[2*cEDT-1]+1);
+					for (unsigned int i=1; i<cEDT; i++)
+					{
+						dp_vals_next[i] = min_3(dp_vals_next[i-1]+1, dp_vals[i]+match_mask[i], dp_vals[i+1]+1);
+					}
+					for (unsigned int i=2*cEDT-1; i>=cEDT+1; i--)
+					{
+						dp_vals_next[i] = min_3(dp_vals[i-1]+1, dp_vals[i]+match_mask[i], dp_vals_next[i+1]+1);
+					}
+					dp_vals_next[cEDT] = min_3(dp_vals[cEDT]+match_mask[cEDT], dp_vals_next[cEDT-1]+1, dp_vals_next[cEDT+1]+1);
+
+					dp_vals = dp_vals_next;
+					//currentDist = dp_vals[cEDT];
+					currentDist = *min_element(dp_vals.begin(),dp_vals.end());
+
+					// if in fixed error mode, do we need to update the threshold?
+					if (fixed_error_mode == true && currentDist >= cEDT_current)
+					{
+						tvm = max(e1_out-s1,e2_out-s2);
+						cEDT_current = (tvm*fixedErr)/100;
+						cEDT_current = min(cEDT_current,MAX_EDT);
+					}
+
+					if (currentDist < cEDT_current)
+					{
+						e1_out++;
+						e2_out++;
+					}
+					else
+					{
+						e1_out -= max(myR1_invalid,myR2_invalid);
+						e2_out -= max(myR1_invalid,myR2_invalid);
+						break;
+					}
+				}
+			}
+
+			/////////////////////////////////////////////////////////
+			//
+			//                  EXTEND TO THE LEFT
+			//
+			// severe amounts of code duplication, for performance.
+			//
+			/////////////////////////////////////////////////////////
+
+			// check for invalid patch of characters
+			endVal = -1;
+			for (unsigned int i=0; i<=cEDT-slidingWin; i++)
+			{
+				if (s1-i-1 <= 0 || s2-i-1 <= 0)
+				{
+					endVal = -2;
+					break;
+				}
+				if (isInvalidString(r1->substr(s1-i-1,slidingWin)) || isInvalidString(r2->substr(s2-i-1,slidingWin)))
+				{
+					endVal = i;
+					break;
+				}
+			}
+			if (endVal >= 0)
+			{
+				s1_out = s1 - endVal - 1 + slidingWin;
+				s2_out = s2 - endVal - 1 + slidingWin;
+			}
+			else if (endVal == -2)	// bounds check
+			{
+				s1_out = s1 - min(s1,s2) + 1;
+				s2_out = s2 - min(s1,s2) + 1;
+			}
+			else
+			{
+				// get dynamic programming matrix values to initialize seed extension algorithm
+				s_temp1 = r1->substr(s1-cEDT,cEDT);
+				s_temp2 = r2->substr(s2-cEDT,cEDT);
+				reverse(s_temp1.begin(), s_temp1.end());
+				reverse(s_temp2.begin(), s_temp2.end());
+				dp_vals = edit_distance(s_temp1,s_temp2);
+				s1_out  = s1-cEDT;
+				s2_out  = s2-cEDT;
+				myR1_invalid = 0;
+				myR2_invalid = 0;
+				currentDist = *min_element(dp_vals.begin(),dp_vals.end());
+
+				cEDT_current = cEDT;
+
+				//
+				// repeatedly extend the optimal alignment until we reach the specified edit distance
+				//
+				while (true)
+				{
+					// bounds check
+					if (s1_out <= 0 || s2_out <= 0)
+						break;
+					// check again for string of invalid values...
+					if ((*r1)[s1_out-1] != 'A' && (*r1)[s1_out-1] != 'C' && (*r1)[s1_out-1] != 'G' && (*r1)[s1_out-1] != 'T')
+						myR1_invalid++;
+					else
+						myR1_invalid = 0;
+					if ((*r2)[s2_out-1] != 'A' && (*r2)[s2_out-1] != 'C' && (*r2)[s2_out-1] != 'G' && (*r2)[s2_out-1] != 'T')
+						myR2_invalid++;
+					else
+						myR2_invalid = 0;
+					if (myR1_invalid >= INVALID_SPAN || myR2_invalid >= INVALID_SPAN)
+					{
+						s1_out += INVALID_SPAN-1;
+						s2_out += INVALID_SPAN-1;
+						break;
+					}
+
+					// construct vector of relevant bp match diagonals	
+					for (unsigned int i=0; i<cEDT; i++)
+					{
+						match_mask[i] = ((*r1)[s1_out-1] == (*r2)[s2_out+cEDT-1-i] ? 0 : 1);
+					}
+					for (int i=cEDT; i>=0; i--)
+					{
+						match_mask[cEDT+i] = ((*r1)[s1_out-1+i] == (*r2)[s2_out-1] ? 0 : 1);
+					}
+
+					// construct the new row/col of DP matrix
+					dp_vals_next[0] = min(dp_vals[0]+match_mask[0], dp_vals[1]+1);
+					dp_vals_next[2*cEDT] = min(dp_vals[2*cEDT]+match_mask[2*cEDT], dp_vals[2*cEDT-1]+1);
+					for (unsigned int i=1; i<cEDT; i++)
+					{
+						dp_vals_next[i] = min_3(dp_vals_next[i-1]+1, dp_vals[i]+match_mask[i], dp_vals[i+1]+1);
+					}
+					for (unsigned int i=2*cEDT-1; i>=cEDT+1; i--)
+					{
+						dp_vals_next[i] = min_3(dp_vals[i-1]+1, dp_vals[i]+match_mask[i], dp_vals_next[i+1]+1);
+					}
+					dp_vals_next[cEDT] = min_3(dp_vals[cEDT]+match_mask[cEDT], dp_vals_next[cEDT-1]+1, dp_vals_next[cEDT+1]+1);
+
+					dp_vals = dp_vals_next;
+					currentDist = *min_element(dp_vals.begin(),dp_vals.end());
+
+					// if in fixed error mode, do we need to update the threshold?
+					if (fixed_error_mode == true && currentDist >= cEDT_current)
+					{
+						tvm = max(e1-s1_out,e2-s2_out);
+						cEDT_current = (tvm*fixedErr)/100;
+						cEDT_current = min(cEDT_current,MAX_EDT);
+					}
+
+					if (currentDist < cEDT_current)
+					{
+						s1_out--;
+						s2_out--;
+					}
+					else
+					{
+						s1_out += max(myR1_invalid,myR2_invalid);
+						s2_out += max(myR1_invalid,myR2_invalid);
+						break;
+					}
+				}
 			}
 		}
+		//cout << max(e1_out-s1_out,e2_out-s2_out) << " " << cEDT << " " << (max(e1_out-s1_out,e2_out-s2_out)*fixedErr)/100 << endl;
 
 		// convert coordinates back to RC, if necessary
 		if (rc1)
