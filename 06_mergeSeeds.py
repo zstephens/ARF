@@ -171,11 +171,14 @@ def main():
 	#	Parse input arguments
 	#
 	parser = argparse.ArgumentParser(description='Extended Seeds -> Plots + Tracks + Etc')
-	parser.add_argument('-i', type=str, required=True,  metavar='<str>', help="input prefix (e.g. *_allReps/hg19_k50_p10_e0)")
+	parser.add_argument('-i', type=str, required=True,  metavar='<str>', help="input_allExtendedSeeds.txt")
 	parser.add_argument('-r', type=str, required=True,  metavar='<str>', help="ref.fa")
 	parser.add_argument('-o', type=str, required=True,  metavar='<str>', help="outputDir/")
+	parser.add_argument('-k', type=int, required=True,  metavar='<int>', help="K: seed kmer length")
+	parser.add_argument('-p', type=int, required=True,  metavar='<int>', help="P: ref padding length")
+	parser.add_argument('-e', type=int, required=True,  metavar='<int>', help="E: edit distance used")
 	parser.add_argument('-b', type=str, required=False, metavar='<str>', help="comma-separated list of bins for bed output values", default=None)
-	parser.add_argument('-l', type=str, required=False, metavar='<str>', help="lowComplexitySeeds.txt", default=None)
+	#parser.add_argument('-l', type=str, required=False, metavar='<str>', help="lowComplexitySeeds.txt", default=None)
 	parser.add_argument('--map',        required=False, action='store_true', help='produce repeat map', default=False)
 	parser.add_argument('--merge',      required=False, action='store_true', help='produce merged repeat track', default=False)
 	parser.add_argument('--mult', type=str,      required=False, metavar='<str>', help='produce multiplicity track with this repeat track', default=None)
@@ -213,16 +216,16 @@ def main():
 	else:
 		IND = '/'.join(splt[:-1])+'/'
 		INF = splt[-1]
-	SEED_KMER = int(re.findall(r"_k\d+",INF)[0][2:])
-	PAD_LEN   = int(re.findall(r"_p\d+",INF)[0][2:])
-	EDIT_DIST = int(re.findall(r"_e\d+",INF)[0][2:])
+	SEED_KMER = args.k
+	PAD_LEN   = args.p
+	EDIT_DIST = args.e
 	REF_NAME  = ''.join(INF.split('_')[0])
 	OUT_DIR   = args.o
 	if OUT_DIR[-1] != '/':
 		OUT_DIR += '/'
 	if not os.path.isdir(OUT_DIR):
 		os.system('mkdir '+OUT_DIR)
-	LOW_COMPLEXITY_FILE = args.l
+	LOW_COMPLEXITY_FILE = None
 
 	#	Read in ref and notate position of each sequence
 	#
@@ -252,20 +255,7 @@ def main():
 
 	#	Make sure all jobs are present
 	#
-	listing = [(int(re.findall(r"_job\d+",n)[0][4:]),n) for n in os.listdir(IND) if INF+'_' in n and '_job' in n]
-	allJ    = {}
-	for n in listing:
-		allJ[n[0]] = True
-	maxJ    = max([int(re.findall(r"of\d+",n)[-1][2:]) for n in os.listdir(IND) if INF+'_' in n and '_job' in n])
-	print 'jobs found:',maxJ
-	for i in xrange(maxJ):
-		jobsNotFound = []
-		if i+1 not in allJ:
-			jobsNotFound.append(i+1)
-		if len(jobsNotFound):
-			print 'Error: Jobs not found:',jobsNotFound
-			exit(1)
-	listing = [n[1] for n in sorted(listing)]
+	listing = [INF]
 
 	if MAKE_MAP:
 		N        = REF_LEN/BP_BIN + 1
@@ -289,19 +279,28 @@ def main():
 		prevRegion = None
 		nPairs     = 0
 		for line in f:
-			splt   = line[:-1].split(' ')
-			if everyOther:
-				region = (int(splt[0]),int(splt[1]))
-				isRC = [(region[0]>=REF_LEN),(prevRegion[0]>=REF_LEN)]
-				if isRC[0]:
-					region = (region[0]-REF_LEN, region[1]-REF_LEN)
-				if isRC[1]:
-					prevRegion = (prevRegion[0]-REF_LEN, prevRegion[1]-REF_LEN)
-			else:
-				prevRegion = (int(splt[0]),int(splt[1]))
+			####splt   = line.strip().split(' ')
+			####if everyOther:
+			####	region = (int(splt[0]),int(splt[1]))
+			####	isRC = [(region[0]>=REF_LEN),(prevRegion[0]>=REF_LEN)]
+			####	if isRC[0]:
+			####		region = (region[0]-REF_LEN, region[1]-REF_LEN)
+			####	if isRC[1]:
+			####		prevRegion = (prevRegion[0]-REF_LEN, prevRegion[1]-REF_LEN)
+			####else:
+			####	prevRegion = (int(splt[0]),int(splt[1]))
+
+			splt = line.strip().split('\t')
+			prevRegion = (int(splt[0]),int(splt[1]))
+			region = (int(splt[2]),int(splt[3]))
+			isRC = [(region[0]>=REF_LEN),(prevRegion[0]>=REF_LEN)]
+			if isRC[0]:
+				region = (region[0]-REF_LEN, region[1]-REF_LEN)
+			if isRC[1]:
+				prevRegion = (prevRegion[0]-REF_LEN, prevRegion[1]-REF_LEN)
 
 			# process region pairs
-			if everyOther:
+			if True:
 
 				regionPairs = [(region,prevRegion)]
 				if firstTimeThrough:
