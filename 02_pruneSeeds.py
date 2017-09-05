@@ -3,6 +3,9 @@ import re
 import bisect
 import copy
 
+SEPARATE_LOWCOMPLEXITY = False
+REMOVE_PERIODIC        = True
+
 from collections import defaultdict
 RC_DICT = defaultdict(lambda:'N')
 RC_DICT['A'] = 'T'
@@ -48,75 +51,125 @@ for line in f:
 		ref += line[:-1].upper();
 f.close()
 REF_LEN = len(ref)
+#print 'REF_LEN:',REF_LEN
+#REF_LEN = 119668450
 
+print 'reading input seed regions...'
 f = open(in_file,'r')
 allReps = []
 for line in f:
 	splt = sorted([int(n) for n in line.split('\t')])
 	allReps.append(splt)
 f.close()
-print 'done.'
-
 allReps = sorted(allReps)
 
 print 'removing redundant seeds that will extend to same repeat...'
 print len(allReps),'-->',
 
-prevGroup = []
+#prevGroup = []
 prunedReps = []
 for i in xrange(len(allReps)):
-	n = copy.deepcopy(allReps[i])
-	if i == 0:
-		prunedReps.append(n)
-		prevGroup = n
+	if i == 0 or i == len(allReps)-1:
+		prunedReps.append(allReps[i])
+		#prevGroup = copy.deepcopy(allReps[i])
 		continue
 	if allReps[i] == allReps[i-1]:
 		continue
-	gDelta = n[0]-prevGroup[0]
-	if gDelta < SEED_KMER:
-		temp = [n[0]]
-		for j in xrange(1,len(n)):
-			myMinusOneIsInLastGroup = False
-			for k in xrange(1,len(prevGroup)):
-				if n[j] == prevGroup[k]+gDelta:
-					myMinusOneIsInLastGroup = True
-			myPlusOneIsInLastGroupAndImRC = False
-			if n[j] >= REF_LEN:
-				for k in xrange(1,len(prevGroup)):
-					if n[j] == prevGroup[k]-gDelta:
-						myPlusOneIsInLastGroupAndImRC = True
-			if (not myMinusOneIsInLastGroup) and (not myPlusOneIsInLastGroupAndImRC):
-				temp.append(n[j])
-		if len(temp) > 1:
-			if any([(m<REF_LEN) for m in temp]):
-				prunedReps.append(temp)
+
+	# check for periodicity
+	if REMOVE_PERIODIC:
+		if len(allReps[i]) >= 5:
+			stretches = [[],[],[]]	# 1, 2, 3
+			for gapLen in xrange(1,len(stretches)+1):
+				currentStart = 0
+				currentlyIn  = (allReps[i][1] - allReps[i][0] == gapLen)
+				for j in xrange(1,len(allReps[i])):
+					myGap = allReps[i][j] - allReps[i][j-1]
+					if myGap == gapLen:
+						if currentlyIn == False:
+							currentStart = j
+						currentlyIn = True
+					else:
+						if currentlyIn == True:
+							stretches[gapLen-1].append([currentStart,j])
+						currentlyIn = False
+			indsWeDontNeed = []
+			indsWeNeed     = []
+			for gapInd in xrange(len(stretches)):
+				for stretchInd in xrange(len(stretches[gapInd])):
+					if stretches[gapInd][stretchInd][1] - stretches[gapInd][stretchInd][0] + 1 >= 5:
+						indsWeNeed.extend([stretches[gapInd][stretchInd][0],stretches[gapInd][stretchInd][0]+1,stretches[gapInd][stretchInd][1],stretches[gapInd][stretchInd][1]-1])
+						indsWeDontNeed.extend(range(stretches[gapInd][stretchInd][0]+2,stretches[gapInd][stretchInd][1]-1))
+			indsWeDontNeed = sorted(list(set(indsWeDontNeed)))
+			indsWeNeed     = sorted(list(set(indsWeNeed)))
+
+			delList = []
+			for j in xrange(len(allReps[i])):
+				if j in indsWeDontNeed and j not in indsWeNeed:
+					delList.append(j)
+			delList = sorted(delList,reverse=True)
+			for j in delList:
+				del allReps[i][j]
+
+	hasPrevMate = [False for n in allReps[i]]
+	hasNextMate = [False for n in allReps[i]]
+	gDelta1 = allReps[i][0] - allReps[i-1][0]
+	gDelta2 = allReps[i+1][0] - allReps[i][0]
+
+	for j in xrange(len(allReps[i])):
+		for k in xrange(len(allReps[i-1])):
+			myDelta = -1
+			if allReps[i][j] < REF_LEN and allReps[i-1][k] < REF_LEN:
+				myDelta = allReps[i][j] - allReps[i-1][k]
+			elif allReps[i][j] >= REF_LEN and allReps[i-1][k] >= REF_LEN:
+				myDelta = allReps[i-1][k] - allReps[i][j]
+			if myDelta == gDelta1 and myDelta > 0 and myDelta < SEED_KMER:
+				hasPrevMate[j] = True
+
+		for k in xrange(len(allReps[i+1])):
+			myDelta = -1
+			if allReps[i+1][k] < REF_LEN and allReps[i][j] < REF_LEN:
+				myDelta = allReps[i+1][k] - allReps[i][j]
+			elif allReps[i+1][k] >= REF_LEN and allReps[i][j] >= REF_LEN:
+				myDelta = allReps[i][j] - allReps[i+1][k]
+			if myDelta == gDelta2 and myDelta > 0 and myDelta < SEED_KMER:
+				hasNextMate[j] = True
+
+	if all(hasPrevMate) and all(hasNextMate):
+		pass
 	else:
-		if any([(m<REF_LEN) for m in n]):
-			prunedReps.append(n)
-	prevGroup = n
+		prunedReps.append(allReps[i])
+
+prunedReps = sorted(prunedReps)
+
 print len(prunedReps)
 
-print 'separating low complexity seeds...'
-easySeeds = []
-lowCSeeds = []
-for n in prunedReps:
-	if n[0] >= REF_LEN:
-		ind = n[0] - REF_LEN
-		s = RC(ref[ind:ind+SEED_KMER])
-	else:
-		ind = n[0]
-		s = ref[ind:ind+SEED_KMER]
+if SEPARATE_LOWCOMPLEXITY:
+	print 'separating low complexity seeds...'
+	easySeeds = []
+	lowCSeeds = []
+	for n in prunedReps:
+		if n[0] >= REF_LEN:
+			ind = n[0] - REF_LEN
+			s = RC(ref[ind:ind+SEED_KMER])
+		else:
+			ind = n[0]
+			s = ref[ind:ind+SEED_KMER]
 
-	myPer = getPeriodicity(s)
-	if myPer != None:
-		lowCSeeds.append([m for m in n])
-	else:
-		easySeeds.append([m for m in n])
-print len(prunedReps),'-->',len(easySeeds),'+',len(lowCSeeds),'(low)'
+		myPer = getPeriodicity(s)
+		if myPer != None:
+			lowCSeeds.append([m for m in n])
+		else:
+			easySeeds.append([m for m in n])
+	print len(prunedReps),'-->',len(easySeeds),'+',len(lowCSeeds),'(low)'
+else:
+	easySeeds = prunedReps
+	lowCSeeds = []
 
 if in_file[-4:] == '.txt':
 	out_file1 = in_file[:-4]+'_pruned.txt'
-	out_file2 = in_file[:-4]+'_lowComplexity.txt'
+	if SEPARATE_LOWCOMPLEXITY:
+		out_file2 = in_file[:-4]+'_lowComplexity.txt'
 else:
 	print 'input file should be .txt'
 	exit(1)
@@ -126,10 +179,11 @@ for i in xrange(len(easySeeds)):
 		f.write(str(easySeeds[i][j])+'\t')
 	f.write(str(easySeeds[i][-1])+'\n')
 f.close()
-f = open(out_file2,'w')
-for i in xrange(len(lowCSeeds)):
-	for j in xrange(len(lowCSeeds[i])-1):
-		f.write(str(lowCSeeds[i][j])+'\t')
-	f.write(str(lowCSeeds[i][-1])+'\n')
-f.close()
+if SEPARATE_LOWCOMPLEXITY:
+	f = open(out_file2,'w')
+	for i in xrange(len(lowCSeeds)):
+		for j in xrange(len(lowCSeeds[i])-1):
+			f.write(str(lowCSeeds[i][j])+'\t')
+		f.write(str(lowCSeeds[i][-1])+'\n')
+	f.close()
 

@@ -1,2 +1,2 @@
-# ARF
-ARF: reference Assembly Repetition Finder
+# NEAT-Repeat
+Reference assembly repetition finder
