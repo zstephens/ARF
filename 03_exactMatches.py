@@ -32,10 +32,24 @@ def main():
 	parser.add_argument('-k',    type=int, required=True,  metavar='<int>',  help="* seed kmer length")
 	parser.add_argument('-p',    type=int, required=True,  metavar='<int>',  help="* reference padding length")
 	parser.add_argument('--job', type=int, required=False, metavar=('<int>','<int>'), default=(1,1), help='ids for parallel jobs', nargs=2)
+	parser.add_argument('--mem', type=int, required=False, metavar='<int>',           default=0,     help="if concerned about memory, output raw matches after this many lines")
+	parser.add_argument('--mdir',type=str, required=False, metavar='<str>',           default='',    help="temp dir to store raw output")
 	args = parser.parse_args()
 
 	(REF_FILE, REF_NAME, IN_FILE, OUT_DIR, SEED_KMER, PAD_LEN) = (args.r, args.R, args.i, args.o, args.k, args.p)
 	(JOB_ID, JOB_TOT) = args.job
+
+	OUTPUT_RAW  = False
+	OUTPUT_RATE = 0
+	RAW_DIR     = OUT_DIR
+	if args.mem > 0:
+		OUTPUT_RAW  = True
+		OUTPUT_RATE = args.mem
+		if len(args.mdir):
+			RAW_DIR = args.mdir
+			if RAW_DIR[-1] != '/':
+				RAW_DIR += '/'
+			makedir(RAW_DIR)
 
 	if OUT_DIR[-1] != '/':
 		OUT_DIR += '/'
@@ -45,6 +59,12 @@ def main():
 	# make sure we can write to a valid outfile before doing all the expensive work
 	ouf = open(OUT_DIR+outfile_name,'w')
 	ouf.close()
+
+	# handle file handles and such if outputting raw (unhashed) data
+	if OUTPUT_RAW:
+		rawNum = 1
+		current_raw_ouf = open(RAW_DIR+str(rawNum)+'.txt','w')
+		rawDict = {}
 
 	#
 	#	READ IN REFERENCE SEQ AND CREATE REVERSE-COMPLEMENT
@@ -138,27 +158,49 @@ def main():
 					e2 = e2_temp+len(ref)
 					s2 = s2_temp+len(ref)
 
-				# add to dictionary
-				if s1 < s2:
-					subDict[(s1,e1,s2,e2)] = True
-				else:
-					subDict[(s2,e2,s1,e1)] = True
-				subTot += 1
+				if OUTPUT_RAW:
+					if s1 < s2:
+						rawDict[(s1,e1,s2,e2)] = True
+					else:
+						rawDict[(s2,e2,s1,e1)] = True
+					if len(rawDict) >= OUTPUT_RATE:
+						sorted_keys = sorted([k for k in rawDict.keys()])
+						for k in sorted_keys:
+							current_raw_ouf.write('\t'.join([str(n) for n in k])+'\n')
+						current_raw_ouf.close()
+						rawNum += 1
+						current_raw_ouf = open(RAW_DIR+str(rawNum)+'.txt','w')
+						rawDict = {}
 
-		#print subTot,'-->',len(subDict)
-		# 808396 --> 517538
-		totalTot  += subTot
-		for k in subDict.keys():
-			totalDict[k] = True 
+				else:
+					# add to dictionary
+					if s1 < s2:
+						subDict[(s1,e1,s2,e2)] = True
+					else:
+						subDict[(s2,e2,s1,e1)] = True
+					subTot += 1
+
+		if OUTPUT_RAW == False:
+			#print subTot,'-->',len(subDict)
+			totalTot  += subTot
+			for k in subDict.keys():
+				totalDict[k] = True 
 
 	f.close()
 
-	print totalTot,'-->',len(totalDict)
-	sorted_keys = sorted([k for k in totalDict.keys()])
-	ouf = open(OUT_DIR+outfile_name,'a')
-	for k in sorted_keys:
-		ouf.write('\t'.join([str(n) for n in k])+'\n')
-	ouf.close()
+	if OUTPUT_RAW == False:
+		print totalTot,'-->',len(totalDict)
+		sorted_keys = sorted([k for k in totalDict.keys()])
+		ouf = open(OUT_DIR+outfile_name,'a')
+		for k in sorted_keys:
+			ouf.write('\t'.join([str(n) for n in k])+'\n')
+		ouf.close()
+
+	else:
+		sorted_keys = sorted([k for k in rawDict.keys()])
+		for k in sorted_keys:
+			current_raw_ouf.write('\t'.join([str(n) for n in k])+'\n')
+		current_raw_ouf.close()
 
 
 if __name__ == '__main__':
