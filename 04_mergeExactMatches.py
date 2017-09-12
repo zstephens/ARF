@@ -5,19 +5,26 @@ IN_DIR = sys.argv[1]
 if IN_DIR[-1] != '/':
 	IN_DIR += '/'
 
-listing = [n for n in os.listdir(IN_DIR) if ('_job_' in n and 'exactMatches' in n)]
+NORMAL_JOBS = True
+if len(sys.argv) > 2:
+	if sys.argv[2] == 'ignore':
+		NORMAL_JOBS = False
 
-jobList = [int(n.split('_')[-3]) for n in listing]
-jobTot  = int(listing[0].split('_')[-1][:-4])
-anyMissing = False
-for i in range(1,jobTot+1):
-	if i not in jobList:
-		print '\nError: Missing data for job #'+str(i)+'\n'
-		anyMissing = True
-if anyMissing:
-	exit(1)
-
-OUT_FILE = '_'.join(listing[0].split('_')[:-4])+'.txt'
+if NORMAL_JOBS:
+	listing = [n for n in os.listdir(IN_DIR) if ('_job_' in n and 'exactMatches' in n)]
+	jobList = [int(n.split('_')[-3]) for n in listing]
+	jobTot  = int(listing[0].split('_')[-1][:-4])
+	anyMissing = False
+	for i in range(1,jobTot+1):
+		if i not in jobList:
+			print '\nError: Missing data for job #'+str(i)+'\n'
+			anyMissing = True
+	if anyMissing:
+		exit(1)
+	OUT_FILE = '_'.join(listing[0].split('_')[:-4])+'.txt'
+else:
+	listing  = [n for n in os.listdir(IN_DIR) if n[-4:] == '.txt']
+	OUT_FILE = 'all_raw.txt'
 
 fList = [open(IN_DIR+n,'r') for n in listing]
 fInd  = [0 for n in fList]
