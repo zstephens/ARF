@@ -44,7 +44,7 @@ while True:
 		if intList[i] == myMin:
 			outDict[fNext[i]] = True
 			while True:
-				fNext[i]   = fList[i].readline()
+				fNext[i]    = fList[i].readline()
 				if fNext[i] == '':
 					delList.append(i)
 					break
@@ -56,7 +56,7 @@ while True:
 	for n in delList[::-1]:
 		del fList[n]
 		del fNext[n]
-	for k in outDict.keys():
+	for k in sorted(outDict.keys()):
 		ouf.write(k)
 	if len(fList) == 0:
 		break
