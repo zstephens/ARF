@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <algorithm>
 
@@ -120,8 +121,8 @@ int main(int argc, char *argv[])
 	unsigned int editDist = 0;
 	unsigned int jobID    = 0;
 	unsigned int jobTot   = 0;
-	unsigned int fixedErr = 0;
 	unsigned int minEMLen = 0;
+	float fixedErr = 0.0;
 	while ((c = getopt(argc, argv, "r:R:i:o:k:p:e:j:J:F:M:")) != -1)
 	{
 		switch (c)
@@ -154,7 +155,7 @@ int main(int argc, char *argv[])
 				jobTot = atoi(optarg);
 				break;
 			case 'F':
-				fixedErr = atoi(optarg);
+				fixedErr = atof(optarg);
 				break;
 			case 'M':
 				minEMLen = atoi(optarg);
@@ -170,7 +171,7 @@ int main(int argc, char *argv[])
 	//  DETERMINE INPUT MODE
 	//
 	bool fixed_error_mode;
-	if (fixedErr > 0)
+	if (fixedErr > 0.0)
 		fixed_error_mode = true;
 	else
 		fixed_error_mode = false;
@@ -240,7 +241,9 @@ int main(int argc, char *argv[])
 	if (fName[fName.size()-1] != '/')
 		fName += '/';
 	if (fixed_error_mode == true)
-		oss << fName << refName << "_extendedSeeds_F" << fixedErr << "_job_" << jobID << "_of_" << jobTot << ".txt";
+	{
+		oss << fName << refName << "_extendedSeeds_F" << setprecision(3) << fixedErr << "_job_" << jobID << "_of_" << jobTot << ".txt";
+	}
 	else
 		oss << fName << refName << "_extendedSeeds_e" << editDist << "_job_" << jobID << "_of_" << jobTot << ".txt";
 	fName = oss.str();
@@ -303,7 +306,7 @@ int main(int argc, char *argv[])
 		// determine initial edit distance if in fixed error mode
 		if (fixed_error_mode == true)
 		{
-			cEDT = ((e1-s1)*fixedErr)/100; // (s1,e1) & (s2,e2) are same size, so we can use either one
+			cEDT = int(0.5 + ((e1-s1)*fixedErr)/100.0); // (s1,e1) & (s2,e2) are same size, so we can use either one
 			slidingWin = min(cEDT,INVALID_SPAN);
 			dp_vals.resize(2*cEDT+1);
 			dp_vals_next.resize(2*cEDT+1);
@@ -430,7 +433,7 @@ int main(int argc, char *argv[])
 					if (fixed_error_mode == true && currentDist >= cEDT_current)
 					{
 						tvm = max(e1_out-s1,e2_out-s2);
-						cEDT_current = (tvm*fixedErr)/100;
+						cEDT_current = int(0.5 + (tvm*fixedErr)/100.0);
 						cEDT_current = min(cEDT_current,MAX_EDT);
 					}
 
@@ -551,7 +554,7 @@ int main(int argc, char *argv[])
 					if (fixed_error_mode == true && currentDist >= cEDT_current)
 					{
 						tvm = max(e1-s1_out,e2-s2_out);
-						cEDT_current = (tvm*fixedErr)/100;
+						cEDT_current = int(0.5 + (tvm*fixedErr)/100.0);
 						cEDT_current = min(cEDT_current,MAX_EDT);
 					}
 
