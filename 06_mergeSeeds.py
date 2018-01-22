@@ -171,9 +171,10 @@ def main():
 	#	Parse input arguments
 	#
 	parser = argparse.ArgumentParser(description='Extended Seeds -> Plots + Tracks + Etc')
-	parser.add_argument('-i', type=str, required=True,  metavar='<str>', help="input_allExtendedSeeds.txt")
+	parser.add_argument('-i', type=str, required=True,  metavar='<str>', help="input_directory/")
 	parser.add_argument('-r', type=str, required=True,  metavar='<str>', help="ref.fa")
-	parser.add_argument('-o', type=str, required=True,  metavar='<str>', help="outputDir/")
+	parser.add_argument('-R', type=str, required=True,  metavar='<str>', help="ref name")
+	parser.add_argument('-o', type=str, required=True,  metavar='<str>', help="output_prefix")
 	parser.add_argument('-k', type=int, required=True,  metavar='<int>', help="K: seed kmer length")
 	parser.add_argument('-p', type=int, required=True,  metavar='<int>', help="P: ref padding length")
 	parser.add_argument('-e', type=int, required=True,  metavar='<int>', help="E: edit distance used")
@@ -208,23 +209,15 @@ def main():
 		MAKE_BED = True
 		BED_BINS = sorted([int(n) for n in args.b.split(',')])
 
-	REF_SEQ = args.r
-	splt = args.i.split('/')
-	if len(splt) == 1:
-		IND = './'
-		INF = args.i
-	else:
-		IND = '/'.join(splt[:-1])+'/'
-		INF = splt[-1]
-	SEED_KMER = args.k
-	PAD_LEN   = args.p
-	EDIT_DIST = args.e
-	REF_NAME  = ''.join(INF.split('_')[0])
-	OUT_DIR   = args.o
-	if OUT_DIR[-1] != '/':
-		OUT_DIR += '/'
-	if not os.path.isdir(OUT_DIR):
-		os.system('mkdir '+OUT_DIR)
+	REF_SEQ    = args.r
+	REF_NAME   = args.R
+	INF        = args.i
+	if INF[-1] != '/':
+		INF += '/'
+	SEED_KMER  = args.k
+	PAD_LEN    = args.p
+	EDIT_DIST  = args.e
+	OUT_PREFIX = args.o
 	LOW_COMPLEXITY_FILE = None
 
 	#	Read in ref and notate position of each sequence
@@ -255,7 +248,17 @@ def main():
 
 	#	Make sure all jobs are present
 	#
-	listing = [INF]
+	listing = [n for n in os.listdir(INF) if ('_job_' in n and 'extendedSeeds' in n)]
+	jobList = [int(n.split('_')[-3]) for n in listing]
+	jobTot  = int(listing[0].split('_')[-1][:-4])
+	anyMissing = False
+	for i in range(1,jobTot+1):
+		if i not in jobList:
+			print '\nError: Missing data for job #'+str(i)+'\n'
+			anyMissing = True
+	if anyMissing:
+		exit(1)
+	#listing = [INF]
 
 	if MAKE_MAP:
 		N        = REF_LEN/BP_BIN + 1
@@ -274,7 +277,7 @@ def main():
 		sys.stdout.write('reading file: '+fn+'\n')
 		sys.stdout.flush()
 
-		f = open(IND+fn,'r')
+		f = open(INF+fn,'r')
 		everyOther = False
 		prevRegion = None
 		nPairs     = 0
@@ -433,9 +436,9 @@ def main():
 		mpl.grid(color='black',linewidth=1,linestyle='-')
 
 		if PNG_MAP:
-			fn = OUT_DIR + INF + '_selfSimilarityMap.png'
+			fn = OUT_PREFIX + '_selfSimilarityMap.png'
 		else:
-			fn = OUT_DIR + INF + '_selfSimilarityMap.pdf'
+			fn = OUT_PREFIX + '_selfSimilarityMap.pdf'
 		print fn
 		mpl.savefig(fn)
 
@@ -452,7 +455,7 @@ def main():
 					multList_by_repSize[myR] = []
 				multList_by_repSize[myR].append(len(indexPairs[ii]) + 1)
 
-			fn = OUT_DIR + INF + '_multiplicityTrack.dat'
+			fn = OUT_PREFIX + '_multiplicityTrack.dat'
 
 		elif OUTPUT_MERGE:
 			# One final merge
@@ -477,7 +480,7 @@ def main():
 						for i in xrange(SEED_KMER,SEED_KMER+indsToDo/2):
 							if repCov[n[1][1]-1-i] < i:
 								repCov[n[1][1]-1-i] = i
-				fn = OUT_DIR + INF + '_mappabilityTrack.dat'
+				fn = OUT_PREFIX + '_mappabilityTrack.dat'
 
 			else:
 				print 'creating repeat track...'
@@ -485,7 +488,7 @@ def main():
 					rVal = min([n[0],UINT4_MAX])
 					for i in xrange(n[1][0],n[1][1]):
 						repCov[i] = rVal
-				fn = OUT_DIR + INF + '_nonUniqueTrack.dat'
+				fn = OUT_PREFIX + '_nonUniqueTrack.dat'
 
 		print fn
 		repCov.tofile(fn)
@@ -493,11 +496,11 @@ def main():
 		if MAKE_BED:
 			print 'generating bed output...'
 			if MULTIPLICITY:
-				fn = OUT_DIR + INF + '_multiplicityTrack.bed'
+				fn = OUT_PREFIX + '_multiplicityTrack.bed'
 			elif MAPPABILITY:
-				fn = OUT_DIR + INF + '_mappabilityTrack.bed'
+				fn = OUT_PREFIX + '_mappabilityTrack.bed'
 			else:
-				fn = OUT_DIR + INF + '_nonUniqueTrack.bed'
+				fn = OUT_PREFIX + '_nonUniqueTrack.bed'
 			f = open(fn,'w')
 			chrPos  = [n[0] for n in refNames if n[1] != 'padding']
 			chrName = [n[1] for n in refNames if n[1] != 'padding']
@@ -545,7 +548,7 @@ def main():
 				#multList_by_repSize[k] = np.median(multList_by_repSize[k])
 				yDat.append(str(np.median(multList_by_repSize[k]))+' '+str(np.max(multList_by_repSize[k])))
 
-			fn = OUT_DIR + INF + '_multiplicity_plotData.txt'
+			fn = OUT_PREFIX + '_multiplicity_plotData.txt'
 
 		else:
 			countDict = {}
@@ -569,9 +572,9 @@ def main():
 			yDat = yDat[::-1]
 
 			if MAPPABILITY:
-				fn = OUT_DIR + INF + '_mappability_plotData.txt'
+				fn = OUT_PREFIX + '_mappability_plotData.txt'
 			else:
-				fn = OUT_DIR + INF + '_nonUnique_plotData.txt'
+				fn = OUT_PREFIX + '_nonUnique_plotData.txt'
 
 		print fn
 		f = open(fn,'w')
