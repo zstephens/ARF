@@ -177,7 +177,7 @@ def main():
 	parser.add_argument('-o', type=str, required=True,  metavar='<str>', help="output_prefix")
 	parser.add_argument('-k', type=int, required=True,  metavar='<int>', help="K: seed kmer length")
 	parser.add_argument('-p', type=int, required=True,  metavar='<int>', help="P: ref padding length")
-	parser.add_argument('-e', type=int, required=True,  metavar='<int>', help="E: edit distance used")
+	#parser.add_argument('-e', type=int, required=True,  metavar='<int>', help="E: edit distance used")
 	parser.add_argument('-b', type=str, required=False, metavar='<str>', help="comma-separated list of bins for bed output values", default=None)
 	#parser.add_argument('-l', type=str, required=False, metavar='<str>', help="lowComplexitySeeds.txt", default=None)
 	parser.add_argument('--map',        required=False, action='store_true', help='produce repeat map', default=False)
@@ -216,7 +216,7 @@ def main():
 		INF += '/'
 	SEED_KMER  = args.k
 	PAD_LEN    = args.p
-	EDIT_DIST  = args.e
+	#EDIT_DIST  = args.e
 	OUT_PREFIX = args.o
 	LOW_COMPLEXITY_FILE = None
 
