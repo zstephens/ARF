@@ -349,7 +349,7 @@ def main():
 
 					# region validation
 					if region[0] < 0 or prevRegion[0] < 0 or region[1] >= REF_LEN or prevRegion[1] >= REF_LEN:
-						print 'Warning: Skipping invalid regions:', region, prevRegion
+						print 'Warning: Skipping invalid regions:', prevRegion, region
 						continue
 					hasN = False
 					#if 'N' in ref[region[0]:region[1]] or 'N' in ref[prevRegion[0]:prevRegion[1]]:
@@ -379,8 +379,10 @@ def main():
 					# exclude repeats corresponding to PAR regions in chrX/Y, if desired...
 					# shortcut: assume X comes before Y
 					if r_intersect(PAR_XY[0],prevRegion) and r_intersect(PAR_XY[1],region):
+						print 'skipping PAR1:', prevRegion, region
 						continue
 					if r_intersect(PAR_XY[2],prevRegion) and r_intersect(PAR_XY[3],region):
+						print 'skipping PAR2:', prevRegion, region
 						continue
 
 					if MAKE_MAP:
