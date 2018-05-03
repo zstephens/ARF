@@ -160,6 +160,8 @@ def condenseListOfRegions(l):
 
 	return [condensedInput[i] for i in xrange(len(condensedInput)) if delList[i] == False]
 
+def r_intersect(a,b):
+	return (a[0] <= b[1] and b[0] <= a[1])
 
 """*****************************************
 ********            MAIN            ********
@@ -185,6 +187,7 @@ def main():
 	parser.add_argument('--mult', type=str,      required=False, metavar='<str>', help='produce multiplicity track with this repeat track', default=None)
 	parser.add_argument('--mappability',required=False, action='store_true', help='compute mappability instead of non-uniqueness', default=False)
 	parser.add_argument('--png',        required=False, action='store_true', help='output png map instead of pdf', default=False)
+	parser.add_argument('--no-par', type=str,      required=False, metavar='<str>', help='exclude X/Y PAR regions ("hg19" or "hg38")', default='')
 	args = parser.parse_args()
 
 	MAKE_MAP     = args.map
@@ -208,6 +211,11 @@ def main():
 	if args.b != None:
 		MAKE_BED = True
 		BED_BINS = sorted([int(n) for n in args.b.split(',')])
+
+	no_par = args.no_par
+	if no_par not in ['','hg19','hg38']:
+		print '\nError: --no-par accepts only hg19 or hg38.\n'
+		exit(1)
 
 	REF_SEQ    = args.r
 	REF_NAME   = args.R
@@ -245,6 +253,15 @@ def main():
 	refLens[refNames[-1][1]] = len(ref)-refNames[-1][0]
 	REF_LEN = len(ref)
 	ref = ''
+
+	chrX_start = [n[0] for n in refNames if n[1] == 'chrX'][0]
+	chrY_start = [n[0] for n in refNames if n[1] == 'chrY'][0]
+	if no_par == 'hg38':
+		PAR_XY = [(chrX_start+10000,chrX_start+2781480), (chrY_start+10000,chrY_start+2781480)]
+		PAR_XY+= [(chrX_start+155701382,chrX_start+156030896), (chrY_start+56887902,chrY_start+57217416)]
+	elif no_par == 'hg19':
+		PAR_XY = [(chrX_start+60000,chrX_start+2699521), (chrY_start+10000,chrY_start+2649521)]
+		PAR_XY+= [(chrX_start+154931043,chrX_start+155260561), (chrY_start+59034049,chrY_start+59363567)]
 
 	#	Make sure all jobs are present
 	#
@@ -359,10 +376,12 @@ def main():
 					rLen = region[1] - region[0]
 					nPairs += 1
 
-					#if rLen == 103:
-					#	print ref[region[0]:region[1]]
-					#	print ''.join([REV_COMP[n] for n in ref[prevRegion[0]:prevRegion[1]]][::-1])
-					#	exit(1)
+					# exclude repeats corresponding to PAR regions in chrX/Y, if desired...
+					# shortcut: assume X comes before Y
+					if r_intersect(PAR_XY[0],prevRegion) and r_intersect(PAR_XY[1],region):
+						continue
+					if r_intersect(PAR_XY[2],prevRegion) and r_intersect(PAR_XY[3],region):
+						continue
 
 					if MAKE_MAP:
 						myColor = -1
