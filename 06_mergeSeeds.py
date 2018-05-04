@@ -378,12 +378,13 @@ def main():
 
 					# exclude repeats corresponding to PAR regions in chrX/Y, if desired...
 					# shortcut: assume X comes before Y
-					if r_intersect(PAR_XY[0],prevRegion) and r_intersect(PAR_XY[1],region):
-						print 'skipping PAR1:', prevRegion, region
-						continue
-					if r_intersect(PAR_XY[2],prevRegion) and r_intersect(PAR_XY[3],region):
-						print 'skipping PAR2:', prevRegion, region
-						continue
+					if no_par == 'hg19' or no_par == 'hg38':
+						if r_intersect(PAR_XY[0],prevRegion) and r_intersect(PAR_XY[1],region):
+							print 'skipping PAR1:', prevRegion, region
+							continue
+						if r_intersect(PAR_XY[2],prevRegion) and r_intersect(PAR_XY[3],region):
+							print 'skipping PAR2:', prevRegion, region
+							continue
 
 					if MAKE_MAP:
 						myColor = -1
