@@ -323,29 +323,31 @@ def main():
 			if True:
 
 				regionPairs = [(region,prevRegion)]
-				if firstTimeThrough:
-					firstTimeThrough = False
-					if LOW_COMPLEXITY_FILE != None:
-						lc_regions = []
-						f2 = open(LOW_COMPLEXITY_FILE,'r')
-						for line2 in f2:
-							splt2  = sorted([int(n) for n in line2.strip().split('\t')])
-							groups = dict(enumerate(grouper(splt2,SEED_KMER), 1))
-							for v in groups.values():
-								if v[0] >= REF_LEN:
-									lc_regions.append((v[0]-REF_LEN,v[-1]+SEED_KMER-REF_LEN))
-								else:
-									lc_regions.append((v[0],v[-1]+SEED_KMER))
-						f2.close()
-						for i in xrange(len(lc_regions)-1):
-							for j in xrange(i+1,len(lc_regions)):
-								regionPairs.append((lc_regions[i],lc_regions[j]))
+				####if firstTimeThrough:
+				####	firstTimeThrough = False
+				####	if LOW_COMPLEXITY_FILE != None:
+				####		lc_regions = []
+				####		f2 = open(LOW_COMPLEXITY_FILE,'r')
+				####		for line2 in f2:
+				####			splt2  = sorted([int(n) for n in line2.strip().split('\t')])
+				####			groups = dict(enumerate(grouper(splt2,SEED_KMER), 1))
+				####			for v in groups.values():
+				####				if v[0] >= REF_LEN:
+				####					lc_regions.append((v[0]-REF_LEN,v[-1]+SEED_KMER-REF_LEN))
+				####				else:
+				####					lc_regions.append((v[0],v[-1]+SEED_KMER))
+				####		f2.close()
+				####		for i in xrange(len(lc_regions)-1):
+				####			for j in xrange(i+1,len(lc_regions)):
+				####				regionPairs.append((lc_regions[i],lc_regions[j]))
 
 				for regionPair in regionPairs:
-					if region[0] < prevRegion[0]:
+					if regionPair[0][0] < regionPair[1][0]:
 						(region,prevRegion) = regionPair
 					else:
 						(prevRegion,region) = regionPair
+
+					print '- r, pr:',region, prevRegion
 
 					# region validation
 					if region[0] < 0 or prevRegion[0] < 0 or region[1] >= REF_LEN or prevRegion[1] >= REF_LEN:
@@ -379,10 +381,10 @@ def main():
 					# exclude repeats corresponding to PAR regions in chrX/Y, if desired...
 					# shortcut: assume X comes before Y
 					if no_par == 'hg19' or no_par == 'hg38':
-						if r_intersect(PAR_XY[0],prevRegion) and r_intersect(PAR_XY[1],region):
+						if r_intersect(PAR_XY[0],region) and r_intersect(PAR_XY[1],prevRegion):
 							print 'skipping PAR1:', prevRegion, region
 							continue
-						if r_intersect(PAR_XY[2],prevRegion) and r_intersect(PAR_XY[3],region):
+						if r_intersect(PAR_XY[2],region) and r_intersect(PAR_XY[3],prevRegion):
 							print 'skipping PAR2:', prevRegion, region
 							continue
 
