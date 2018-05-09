@@ -347,7 +347,7 @@ def main():
 					else:
 						(prevRegion,region) = regionPair
 
-					print '- r, pr:',region, prevRegion
+					#print '- r, pr:',region, prevRegion
 
 					# region validation
 					if region[0] < 0 or prevRegion[0] < 0 or region[1] >= REF_LEN or prevRegion[1] >= REF_LEN:
