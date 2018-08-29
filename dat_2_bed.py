@@ -6,7 +6,6 @@ import argparse
 import numpy as np
 
 
-
 """*****************************************
 ********            MAIN            ********
 *****************************************"""
@@ -20,22 +19,10 @@ def main():
 	parser.add_argument('-i', type=str, required=True, metavar='<str>', help="input_track.dat")
 	parser.add_argument('-r', type=str, required=True, metavar='<str>', help="ref.fa")
 	parser.add_argument('-b', type=str, required=True, metavar='<str>', help="comma-separated list of bins for bed output values", default=None)
+	parser.add_argument('-o', type=str, required=True, metavar='<str>', help="output.bed")
 	args = parser.parse_args()
 
-
-	MULTIPLICITY = False
-	MAPPABILITY  = False
-	NON_UNIQUE   = False
-	if '_multiplicityTrack.dat' in args.i:
-		MULTIPLICITY = True
-	elif '_mappabilityTrack.dat' in args.i or '_mapabilityTrack.dat' in args.i:	# early versions of neat had this typo. ugh...
-		MAPPABILITY  = True
-	elif '_nonUniqueTrack.dat' in args.i:
-		NON_UNIQUE   = True
-	else:
-		print '\nError: Invalid track type specified.\n'
-		exit(1)
-
+	OUT_FILE   = args.o
 	BED_BINS   = sorted([int(n) for n in args.b.split(',')])
 
 	REF_SEQ    = args.r
@@ -46,9 +33,7 @@ def main():
 	else:
 		IND = '/'.join(splt[:-1])+'/'
 		INF = splt[-1]
-	SEED_KMER = int(re.findall(r"_k\d+",INF)[0][2:])
-	PAD_LEN   = int(re.findall(r"_p\d+",INF)[0][2:])
-	EDIT_DIST = int(re.findall(r"_e\d+",INF)[0][2:])
+	PAD_LEN   = 100
 
 	inputTrack = np.fromfile(args.i,'<u4')
 
@@ -82,8 +67,7 @@ def main():
 
 	print 'generating bed output...'
 	tt = time.time()
-	fn = args.i[:-4] + '.bed'
-	f = open(fn,'w')
+	f = open(OUT_FILE,'w')
 	chrPos  = [n[0] for n in refNames if n[1] != 'padding']
 	chrName = [n[1] for n in refNames if n[1] != 'padding']
 	currentChr = -1
@@ -92,8 +76,9 @@ def main():
 	prevVal    = 0
 	PRINT_EVERY = 1000000
 	for i in xrange(len(inputTrack)):
-		if i%PRINT_EVERY == 0:
-			print i,'/',len(inputTrack),'[{0:.2%}]'.format(i/float(len(inputTrack)))
+		if (i+1)%PRINT_EVERY == 0:
+			print i+1,'/',len(inputTrack),'[{0:.2%}]'.format(i/float(len(inputTrack)))
+			#break
 		if i == nextChrAt:
 			currentChr += 1
 			if currentChr < len(chrName)-1:
@@ -122,7 +107,7 @@ def main():
 				f.write(chrName[currentChr] + '\t' + str(regStart-chrPos[currentChr]) + '\t' + str(i-chrPos[currentChr]) + '\t' + str(prevVal) + '\n')
 				prevVal = 0
 	f.close()
-	print fn
+	print OUT_FILE
 
 	print time.time()-tt,'(sec)'
 
